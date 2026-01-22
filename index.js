@@ -103,6 +103,28 @@ app.delete("/api/slots/:id", async (req, res) => {
         res.status(500).json({ success: false, error: "Failed to delete slot" });
     }
 });
+// Get appointments by date
+app.get('/api/appointments', async (req, res) => {
+    try {
+        const { date } = req.query;
+
+        if (!date) {
+            return res.status(400).json({ error: "Date is required" });
+        }
+
+        const appointments = await db
+            .collection("appointments")
+            .find({ date })        
+            .sort({ time: 1 })     
+            .toArray();
+
+        res.json(appointments);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 
 
 app.use(express.static(path.join(__dirname, "public")));

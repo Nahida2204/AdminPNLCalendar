@@ -120,7 +120,7 @@
     <div id="app" v-cloak>
         <div class="container-fluid px-4 py-4">
             <div class="mb-4">
-                <h1 class="h2 fw-bold text-dark mb-2">Admin Portal - PNL Appointments</h1>
+                <h1 class="h2 fw-bold text-dark mb-2">Welcome to the Admin Portal</h1>
                 <p class="text-muted">Manage appointment slots and availability</p>
             </div>
 
@@ -190,6 +190,16 @@
 
                             <form @submit.prevent="addSlot">
                                 <div class="mb-3">
+                                    <label class="form-label small fw-medium">Event Type</label>
+                                    <select v-model="newSlot.eventType" class="form-select" required>
+                                        <option value="">Select Event Type</option>
+                                        <option value="nutritionist">Nutritionist session</option>
+                                        <option value="psychologist">Psychologist session</option>
+                                    </select>
+                                </div>
+
+
+                                <div class="mb-3">
                                     <label class="form-label small fw-medium">Select Date</label>
                                     <input type="date" v-model="newSlot.date" class="form-control" required>
                                 </div>
@@ -200,9 +210,13 @@
                                         <option value="">Select Type</option>
                                         <option value="individual">Individual</option>
                                         <option value="group">Group</option>
-                                        <option value="couples">Couples</option>
-                                        <option value="family">Family</option>
+
                                     </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label small fw-medium">Capacity (Number of spaces)</label>
+                                    <input type="number" min="1" v-model="newSlot.capacity" class="form-control"
+                                        required>
                                 </div>
 
                                 <div class="row g-2 mb-3">
@@ -224,6 +238,8 @@
                                         <option value="blocked">Blocked</option>
                                     </select>
                                 </div>
+
+
 
                                 <button type="submit" class="btn btn-info text-white w-100 mb-2">
                                     {{ editMode ? 'Update Slot' : 'Add Slot' }}
@@ -248,7 +264,12 @@
                             <h3 class="h5 fw-semibold text-dark mb-0">
                                 Manage Slots - {{ currentMonthName }} {{ selectedDateForForm.day }}, {{ currentYear }}
                             </h3>
-                            <button @click="closeModal" class="btn-close"></button>
+                            <div>
+                                <button @click="viewAppointments" class="btn btn-sm btn-outline-info me-2">
+                                    View Appointments
+                                </button>
+                                <button @click="closeModal" class="btn-close"></button>
+                            </div>
                         </div>
 
                         <div v-if="selectedDateSlots.length === 0" class="text-center py-5 text-muted">
@@ -268,10 +289,14 @@
                                                 <span :class="getStatusBadgeClass(slot.status)" class="badge">
                                                     {{ slot.status }}
                                                 </span>
+
                                             </div>
                                             <div class="small text-secondary">
-                                                {{ slot.time }}
+                                                <div><strong>Time:</strong> {{ slot.time }}</div>
+                                                <div><strong>Capacity:</strong> {{ slot.capacity }}</div>
+                                                <div><strong>Event:</strong> {{ slot.eventType }}</div>
                                             </div>
+
                                         </div>
                                         <div class="d-flex gap-2">
                                             <button @click="editSlot(slot)" class="btn btn-sm btn-outline-primary">
@@ -288,6 +313,40 @@
                     </div>
                 </div>
             </div>
+            <!-- Appointments Modal -->
+            <div v-if="showAppointmentsModal" class="modal-backdrop-custom" @click.self="closeAppointmentsModal">
+                <div class="card shadow-lg"
+                    style="max-width: 700px; width: 100%; margin: 0 1rem; max-height: 90vh; overflow-y: auto;">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-4">
+                            <h3 class="h5 fw-semibold text-dark mb-0">
+                                Appointments - {{ selectedDateForForm.day }}/{{ currentMonth+1 }}/{{ currentYear }}
+                            </h3>
+                            <button @click="closeAppointmentsModal" class="btn-close"></button>
+                        </div>
+
+                        <div v-if="appointmentsList.length === 0" class="text-center py-5 text-muted">
+                            <p>No appointments booked for this date.</p>
+                        </div>
+
+                        <div v-else>
+                            <div v-for="appointment in appointmentsList" :key="appointment._id"
+                                class="card mb-3 border">
+                                <div class="card-body">
+                                    <h6 class="fw-semibold">{{ appointment.customerName }}</h6>
+                                    <p class="mb-1 small">
+                                        <strong>Email:</strong> {{ appointment.email }}<br>
+                                        <strong>Phone:</strong> {{ appointment.phone }}<br>
+                                        <strong>Type:</strong> {{ appointment.type }}<br>
+                                        <strong>Time Booked:</strong> {{ appointment.time }}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </div>
 
@@ -309,9 +368,13 @@
                     type: '',
                     startTime: '',
                     endTime: '',
-                    status: 'available'
+                    status: 'available',
+                    capacity: 1, // default for individual
+                    eventType: ''
                 },
                 appointments: {},
+                showAppointmentsModal: false,
+                appointmentsList: [],
                 nextId: 1
             },
             computed: {
@@ -375,7 +438,7 @@
                     return hour12 + ':' + minute + ' ' + ampm;
                 },
                 getSlotText(slots) {
-                    return slots + (slots === 1 ? ' slot' : ' slots');
+                    return slots + (slots === 1 ? ' event' : ' events');
                 },
                 getStatusBadgeClass(status) {
                     const classes = {
@@ -420,6 +483,21 @@
                         alert("Please fill in all fields");
                         return;
                     }
+                    // Time validation
+                    if (this.newSlot.startTime >= this.newSlot.endTime) {
+                        alert("End time must be greater than start time");
+                        return;
+                    }
+
+                    // Enforce capacity rules
+                    if (this.newSlot.type === 'individual') {
+                        this.newSlot.capacity = 1;
+                    }
+
+                    if (this.newSlot.type === 'group' && (!this.newSlot.capacity || this.newSlot.capacity < 1)) {
+                        alert("Group slots must have a capacity greater than 0");
+                        return;
+                    }
 
                     const timeString = this.formatTime(this.newSlot.startTime) + " - " + this.formatTime(this.newSlot.endTime);
                     const payload = {
@@ -428,7 +506,9 @@
                         startTime: this.newSlot.startTime,
                         endTime: this.newSlot.endTime,
                         time: timeString,
-                        status: this.newSlot.status
+                        status: this.newSlot.status,
+                        capacity: this.newSlot.capacity,
+                        eventType: this.newSlot.eventType
                     };
 
                     try {
@@ -500,12 +580,17 @@
                         const slots = await res.json();
                         this.appointments = {};
                         slots.forEach(slot => {
-                            if (!this.appointments[slot.date]) this.$set(this.appointments, slot.date, []);
+                            if (!this.appointments[slot.date]) {
+                                this.$set(this.appointments, slot.date, []);
+                            }
+
                             this.appointments[slot.date].push({
                                 id: slot._id.toString(),
                                 type: slot.type,
                                 time: slot.time,
-                                status: slot.status
+                                status: slot.status,
+                                capacity: slot.capacity ?? 1,
+                                eventType: slot.eventType
                             });
                         });
                     } catch (err) {
@@ -521,6 +606,8 @@
                     this.newSlot.date = this.selectedDateForForm.dateKey;
                     this.newSlot.type = slot.type;
                     this.newSlot.status = slot.status;
+                    this.newSlot.eventType = slot.eventType || '';
+
 
                     const times = slot.time.split(' - ');
                     this.newSlot.startTime = this.convertTo24Hour(times[0]);
@@ -590,7 +677,26 @@
                 closeModal() {
                     this.showModal = false;
                     this.selectedDateForForm = null;
-                }
+                },
+                async viewAppointments() {
+                    if (!this.selectedDateForForm) return;
+
+                    try {
+                        const res = await fetch(`http://localhost:3000/api/appointments?date=${this.selectedDateForForm.dateKey}`);
+                        if (!res.ok) throw new Error("Failed to fetch appointments");
+
+                        this.appointmentsList = await res.json();
+                        this.showAppointmentsModal = true;
+                    } catch (err) {
+                        console.error(err);
+                        alert("Error loading appointments: " + err.message);
+                    }
+                },
+
+                closeAppointmentsModal() {
+                    this.showAppointmentsModal = false;
+                    this.appointmentsList = [];
+                },
             },
             mounted() {
                 const today = new Date();
